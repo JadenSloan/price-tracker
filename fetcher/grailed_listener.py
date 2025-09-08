@@ -3,11 +3,13 @@ import asyncio
 import re 
 import json 
 from pathlib import Path
-from src.models import * 
+from src.models import Listing
 from dataclasses import dataclass, asdict 
-
+from utils.time import days_old
 
 OUTFILE = Path("grailed_listings.json")
+
+
 
 async def extract_from_algolia_requests(payload: dict, seen: set, rows: list):
     # Algolia's response contains a list of hits under results[*]['hits']
@@ -23,6 +25,7 @@ async def extract_from_algolia_requests(payload: dict, seen: set, rows: list):
 
             user = hit.get("user", {}) or {}
             score = user.get("seller_score") or {} 
+            
             
             listing = Listing(
                 listing_id=listing_id, 
@@ -46,6 +49,25 @@ async def extract_from_algolia_requests(payload: dict, seen: set, rows: list):
                 posted_time=cover.get("created_at"),
                 listing_url=f"https://www.grailed.com/listings/{listing_id}"
             )
+
+            # Prefilters 
+            age_days = days_old(listing.posted_time)
+
+            if not listing.buynow and not listing.makeoffer:
+                continue
+
+            if listing.seller_rating is None or listing.seller_rating < 3:
+                continue 
+
+            if listing.transactions == 0:
+                continue
+
+            if age_days > 180:
+                continue 
+
+            if listing.sold:
+                continue
+
             rows.append(asdict(listing))
           
     
@@ -53,7 +75,7 @@ async def extract_from_algolia_requests(payload: dict, seen: set, rows: list):
 
 
 # Match Algolia's multi-queries endpoint (hostnames can rotate)
-ALGOLIA_URL_RX = re.compile(r"\.algolia\.net/1/indexes/\*/queries", re.I)
+ALGOLIA_URL_RX = re.compile(r"\.algolia\.net/1/indexes/.+/queries", re.I)
 
 async def main(): 
 
@@ -89,6 +111,9 @@ async def main():
         OUTFILE.write_text(json.dumps(rows, indent=2))
         print(f"Saved {len(rows)} listings to {OUTFILE.resolve()}")
 
+        # Let all responses finish
+        await page.wait_for_load_state('networkidle')
+        await page.wait_for_timeout(1500)
         
         await browser.close() 
 

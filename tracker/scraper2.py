@@ -9,7 +9,7 @@ ALGOLIA_URL_RX = re.compile(r"\.algolia\.net/1/indexes/\*/queries", re.I)
 
 LISTINGS_INDEX_SUBSTR = "listing"
 
-OUTFILE = Path("grailed_listings.json")
+OUTFILE = Path("data/grailed_listings.json")
 
 
 def extract_from_algolia_payload(payload: dict, seen: set, rows: list) -> None:
@@ -88,7 +88,6 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
 
 
 

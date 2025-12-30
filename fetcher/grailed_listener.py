@@ -7,11 +7,12 @@ from src.models import Listing
 from dataclasses import dataclass, asdict 
 from utils.time import days_old
 
-OUTFILE = Path("grailed_listings.json")
+OUTFILE = Path("data/grailed_listings.json")
+RAW_OUTFILE = Path("data/raw_grailed_listings.json")
 
 
 
-async def extract_from_algolia_requests(payload: dict, seen: set, rows: list):
+async def extract_from_algolia_requests(payload: dict, seen: set, rows: list, raw_rows: list):
     # Algolia's response contains a list of hits under results[*]['hits']
     for results in payload.get("results", []):
         for hit in results.get("hits", []):
@@ -50,10 +51,13 @@ async def extract_from_algolia_requests(payload: dict, seen: set, rows: list):
                 listing_url=f"https://www.grailed.com/listings/{listing_id}"
             )
 
+            # Collect data before filters.
+            raw_rows.append(asdict(listing))    
+
             # Prefilters 
             age_days = days_old(listing.posted_time)
 
-            if not listing.buynow and not listing.makeoffer:
+            if not (listing.buynow and listing.makeoffer):
                 continue
 
             if listing.seller_rating is None or listing.seller_rating < 3:
@@ -81,6 +85,7 @@ async def main():
 
     seen = set()
     rows = []
+    raw_rows = []
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=False)
@@ -94,7 +99,7 @@ async def main():
                 data = await resp.json()
             except Exception:
                 return 
-            await extract_from_algolia_requests(data, seen, rows)
+            await extract_from_algolia_requests(data, seen, rows, raw_rows)
 
         # "Listen" to every network response and filter by the regex above           
         page.on("response", handle_response) 
@@ -107,19 +112,19 @@ async def main():
             await page.mouse.wheel(0,600)
             await page.wait_for_timeout(1000)
 
-        # Save results
+        # Save results 
         OUTFILE.write_text(json.dumps(rows, indent=2))
         print(f"Saved {len(rows)} listings to {OUTFILE.resolve()}")
 
-        # Let all responses finish
-        await page.wait_for_load_state('networkidle')
-        await page.wait_for_timeout(1500)
-        
+        # Save raw results
+        RAW_OUTFILE.write_text(json.dumps(raw_rows, indent=2))
+        print(f"Saved {len(raw_rows)} listings to {RAW_OUTFILE.resolve()}")
+
         await browser.close() 
 
 if __name__ == "__main__":
     asyncio.run(main())
 
 
-            
+          
 

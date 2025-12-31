@@ -2,11 +2,7 @@ import re
 import json
 from pathlib import Path
 
-# remove sizes, condition, color, price tokens, marketing fluff, 
-# standardize brand aliases 
 
-# Loop through the title in grailed.listings.JSON
-# Add filters 
 BRAND_ALIASES = {
     "ch": "chrome hearts",
 }

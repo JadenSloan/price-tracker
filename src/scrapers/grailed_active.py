@@ -5,10 +5,10 @@ import json
 from pathlib import Path
 from src.models import Listing
 from dataclasses import dataclass, asdict 
-from utils.time import days_old
+from src.utils.time import days_old
 
-OUTFILE = Path("data/grailed_listings.json")
-RAW_OUTFILE = Path("data/raw_grailed_listings.json")
+OUTFILE = Path("data/active/grailed_listings.json")
+RAW_OUTFILE = Path("data/active/raw_grailed_listings.json")
 
 
 

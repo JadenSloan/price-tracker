@@ -29,17 +29,17 @@ def clean_title(title):
     return title 
 
 
-def main(): 
+def main():
     # Load JSON from data folder
-    with open('data/grailed_listings.json', 'r') as f: 
-        data = json.load(f) 
+    with open('data/active/grailed_listings.json', 'r') as f:
+        data = json.load(f)
 
-    for listing in data: 
-        if "title" in listing: 
-            listing["title"] = clean_title(listing["title"]) 
+    for listing in data:
+        if "title" in listing:
+            listing["title"] = clean_title(listing["title"])
 
-    output_path = Path("data/grailed_listings_clean.json") 
-    output_path.write_text(json.dumps(data, indent=2))  
+    output_path = Path("data/active/grailed_listings_clean.json")
+    output_path.write_text(json.dumps(data, indent=2))
     print(f"Saved {len(data)} listings to {output_path.resolve()}")  
 
 if __name__ == "__main__":

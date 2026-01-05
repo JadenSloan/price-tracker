@@ -1,58 +1,72 @@
-import requests 
+from unicodedata import category
+from grailed_api import GrailedAPIClient 
+from src.models import Listing 
+from dataclasses import asdict
 from pathlib import Path 
 import json 
-from src.models import Listing 
-from dataclasses import asdict 
 
+client = GrailedAPIClient() 
 
-ALGOLIA_APP_ID = "MNRWEFSS2Q" 
-ALGOLIA_API_KEY = "" 
-ALGOLIA_INDEX = "Listing_production" 
+OUTFILE = Path("data/sold/sold_grailed_listings")
 
-def fetch_sold_listings(designer="chrome hearts", max_pages=50): 
-    """Fetch sold listings directly from Algolia API""" 
-    url = f"https://{ALGOLIA_APP_ID}-dsn.algolia.net/net/1/indexes/{ALGOLIA_INDEX}/query" 
+def get_sold_products(): 
 
-    headers = {
-        "x-algolia-agent": "Algolia for JavaScript (4.14.2); Browser",
-        "x-algolia-api-key": ALGOLIA_API_KEY,
-        "x-algolia-application-id": ALGOLIA_APP_ID,
-        "Content-Type": "application/json"  
-    }
-
-    all_listings = []
-
-    for page in range(max_pages): 
-        payload = {
-            "query": designer, 
-            "page": page, 
-            "hitsPerPage": 100, 
-            "filters": f"sold:true AND designers: {designer}" 
-        }
-
-        response = requests.post(url, headers=headers, json=payload) 
-        data = response.json() 
-        hits = data.get("hits", []) 
-
-        if not hits: 
-            break 
-
-        # Map Algolia hits to Listin model 
-        for hit in hits: 
-            listing = Listing( 
-                listing_id=str(hit.get("objectID")),
-                title=hit.get("title"),
-                price=hit.get("price"),
-                sold_price=hit.get("sold_price")
-                # ... map other fields 
-            ) 
-            all_listings.append(asdict(listing)) 
-
-        print(f"Page {page}: fetched {len(hits)} listings")
+    products = client.find_products(
+        sold=True,
+        on_sale=False,
+        query_search="chrome hearts"
+    )
     
-    # Save to data/sold/ 
-    output = Path("data/sold/grailed_sold.json") 
-    output.write_text(json.dumps(all_listings, indent=2)) 
-    print(f"Total: {len(all_listings)} sold listings")
-    return all_listings 
+    if products: 
+        print("Sample product structure:")
+        print(json.dumps(products[0] if isinstance(products, list) else products, indent=2, default=str))
+        print() 
+
+    listings = []
+    for product in products: 
+
+
+        listing = Listing(
+            listing_id=product.get("listing_id"), 
+            title=product.get("title"), 
+            price=product.get("price"), 
+            size=product.get("size"), 
+            listing_url=product.get("url"),
+            posted_time=product.get("created_at"),
+            bumped_time=product.get("updated_at"),  
+            seller_name=product.get("user").get("username"),  
+            seller_rating=product.get("user").get("rating_average"), 
+            rating_count=product.get("user").get("rating_count"),  
+            location=product.get("location"),  
+            designer=product.get("designer_names"),  
+            condition=product.get("condition"),  
+            image_url=product.get("url"),  
+            sold_price=product.get("sold_price"), 
+            transactions=product.get("user").get("total_bought_and_sold"),  
+            category=product.get("category"),  
+            buynow=product.get("buynow"), 
+            makeoffer=product.get("makeoffer"),
+            sold=product.get("sold")
+        )
+        listings.append(listing)
+
+        print(f"Listing: {listing.title}")
+        print(f" Designer: {listing.designer}")
+        print(f" Price: {listing.price}") 
+        print(f" Sold Price: {listing.sold_price}") 
+        print(f" Size: {listing.size}") 
+        print(f" Seller: {listing.seller_name}") 
+        print(f" Sold: {listing.sold}")
+        print(f" Transactions: {listing.transactions}") 
+        print() 
+
+    return listings 
+
+if __name__ == '__main__':
+    listings = get_sold_products()
+    print(f"Total listings: {len(listings)}")
+
+
     
+
+

@@ -1,85 +1,70 @@
-from playwright.async_api import async_playwright 
-import asyncio 
 import re 
 import json 
 from pathlib import Path
 from src.models import Listing
 from dataclasses import dataclass, asdict 
 from src.utils.time import days_old
+from grailed_api import GrailedAPICLient 
 
 OUTFILE = Path("data/active/grailed_listings.json")
 RAW_OUTFILE = Path("data/active/raw_grailed_listings.json")
 
+client = GrailedAPICLient()
 
+def get_active_listings(payload: dict, rows: list, raw_rows: list):
 
-async def extract_from_algolia_requests(payload: dict, seen: set, rows: list, raw_rows: list):
-    # Algolia's response contains a list of hits under results[*]['hits']
-    for results in payload.get("results", []):
-        for hit in results.get("hits", []):
+    products = client.find_products(
+        sold=False, 
+        query_search="chrome hearts"
+    )
 
-            cover = hit.get("cover_photo", {}) or {}
-            listing_id = cover.get("listing_id")
+    listings = [] 
 
-            if not listing_id or listing_id in seen:
-                continue
-            seen.add(listing_id)
-
-            user = hit.get("user", {}) or {}
-            score = user.get("seller_score") or {} 
-            
-            
-            listing = Listing(
-                listing_id=listing_id, 
-                title=hit.get("title"),
-                price=hit.get("price"),
-                size=hit.get("size"),
-                condition=hit.get("condition"),
-                bumped_time=hit.get("bumped_at"),
-                location=hit.get("location"),
-                designer=hit.get("designer_names"),
-                sold_price=hit.get("sold_price"),
-                category=hit.get("category"),
-                buynow=hit.get("buynow"),
-                makeoffer=hit.get("makeoffer"),
-                sold=hit.get("sold"),
-                seller_name=user.get("username"),
-                transactions=user.get("total_bought_and_sold"),
-                seller_rating=score.get("rating_average"),
-                rating_count=score.get("rating_count"),
-                image_url=cover.get("image_url"),
-                posted_time=cover.get("created_at"),
-                listing_url=f"https://www.grailed.com/listings/{listing_id}"
-            )
+    for product in products: 
+        listing = Listing(
+            listing_id=product.get("listing_id"), 
+            title=product.get("title"), 
+            price=product.get("price"), 
+            size=product.get("size"), 
+            listing_url=product.get("url"),
+            posted_time=product.get("created_at"),
+            bumped_time=product.get("updated_at"),  
+            seller_name=product.get("user").get("username"),  
+            seller_rating=product.get("user").get("rating_average"), 
+            rating_count=product.get("user").get("rating_count"),  
+            location=product.get("location"),  
+            designer=product.get("designer_names"),  
+            condition=product.get("condition"),  
+            image_url=product.get("url"),  
+            sold_price=product.get("sold_price"), 
+            transactions=product.get("user").get("total_bought_and_sold"),  
+            category=product.get("category"),  
+            buynow=product.get("buynow"), 
+            makeoffer=product.get("makeoffer"),
+            sold=product.get("sold")
+        )
 
             # Collect data before filters.
-            raw_rows.append(asdict(listing))    
+        raw_rows.append(asdict(listings))
 
-            # Prefilters 
-            age_days = days_old(listing.posted_time)
+        # Prefilters 
+        age_days = days_old(listing.posted_time)
 
-            if not (listing.buynow and listing.makeoffer):
-                continue
+        if not (listing.buynow and listing.makeoffer):
+            continue
+        if listing.seller_rating is None or listing.seller_rating < 3:
+            continue 
+        if listing.transactions == 0:
+            continue
+        if age_days > 180:
+            continue 
+        if listing.sold:
+            continue
 
-            if listing.seller_rating is None or listing.seller_rating < 3:
-                continue 
-
-            if listing.transactions == 0:
-                continue
-
-            if age_days > 180:
-                continue 
-
-            if listing.sold:
-                continue
-
-            rows.append(asdict(listing))
+        rows.append(asdict(listings))
           
     
 
-
-
-# Match Algolia's multi-queries endpoint (hostnames can rotate)
-ALGOLIA_URL_RX = re.compile(r"\.algolia\.net/1/indexes/.+/queries", re.I)
 
 async def main(): 
 
@@ -87,43 +72,18 @@ async def main():
     rows = []
     raw_rows = []
 
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=False)
-        page = await browser.new_page()
-        
-        async def handle_response(resp): 
-            url = resp.request.url
-            if not ALGOLIA_URL_RX.search(url): 
-                return 
-            try: 
-                data = await resp.json()
-            except Exception:
-                return 
-            await extract_from_algolia_requests(data, seen, rows, raw_rows)
+    
+    # Save results 
+    OUTFILE.write_text(json.dumps(rows, indent=2))
+    print(f"Saved {len(rows)} listings to {OUTFILE.resolve()}")
 
-        # "Listen" to every network response and filter by the regex above           
-        page.on("response", handle_response) 
+    # Save raw results
+    RAW_OUTFILE.write_text(json.dumps(raw_rows, indent=2))
+    print(f"Saved {len(raw_rows)} listings to {RAW_OUTFILE.resolve()}")
 
-        # Navigate to grailed to trigger network responses
-        await page.goto("https://www.grailed.com/designers/chrome-hearts")
-
-        # Scroll to trigger additional Algolia loads (infinite scroll)
-        for _ in range(2):
-            await page.mouse.wheel(0,600)
-            await page.wait_for_timeout(1000)
-
-        # Save results 
-        OUTFILE.write_text(json.dumps(rows, indent=2))
-        print(f"Saved {len(rows)} listings to {OUTFILE.resolve()}")
-
-        # Save raw results
-        RAW_OUTFILE.write_text(json.dumps(raw_rows, indent=2))
-        print(f"Saved {len(raw_rows)} listings to {RAW_OUTFILE.resolve()}")
-
-        await browser.close() 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
 
 
           
